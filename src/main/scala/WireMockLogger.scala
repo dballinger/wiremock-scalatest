@@ -1,5 +1,5 @@
 import com.github.tomakehurst.wiremock.WireMockServer
-import com.github.tomakehurst.wiremock.matching.RequestPattern
+import com.github.tomakehurst.wiremock.matching.{ValuePattern, RequestPattern}
 import org.scalatest.{Failed, Suite}
 
 trait WireMockLogger {
@@ -25,8 +25,15 @@ trait WireMockLogger {
           mapping =>
             val pattern = mapping.getRequest
             pattern match {
-              case UrlMatcher(url) => wiremockFailureLog.println(s"${pattern.getMethod.value()}: ${url.description}")
-              case _ =>
+              case UrlMatcher(url) => wiremockFailureLog.println(s"${pattern.getMethod.value()}: $url")
+              case _ => throw new UnsupportedOperationException
+            }
+            wiremockFailureLog.println("With headers:")
+            for {
+              headers <- Option(pattern.getHeaders)
+              header <- headers
+            } {
+              wiremockFailureLog.println(s"\t'${header._1}' ${ValueMatcher(header._2)}")
             }
         }
     }
@@ -47,7 +54,7 @@ trait WireMockLogger {
 case class MockServer(name: String, server: WireMockServer)
 
 class UrlMatcher(urlOrPath: String, policy: String, url: String) {
-  def description = s"$urlOrPath $policy $url"
+  override def toString = s"$urlOrPath $policy $url"
 }
 
 object UrlMatcher {
@@ -57,5 +64,17 @@ object UrlMatcher {
     case (null, null, urlPattern, null) => Option(new UrlMatcher("URL", "~=", urlPattern))
     case (null, null, null, pathPattern) => Option(new UrlMatcher("Path", "~=", pathPattern))
     case _ => None
+  }
+}
+
+class ValueMatcher(policy: String, value: String) {
+  override def toString = s"$policy '$value'"
+}
+
+object ValueMatcher {
+  def apply(vp: ValuePattern): ValueMatcher = (vp.getEqualTo, vp.getContains) match {
+    case (eq, null) => new ValueMatcher("equals", eq)
+    case (null, cont) => new ValueMatcher("contains", cont)
+    case _ => throw new UnsupportedOperationException(s"Unsupported value pattern: $vp")
   }
 }

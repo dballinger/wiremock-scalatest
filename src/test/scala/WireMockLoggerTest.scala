@@ -47,14 +47,12 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
   }
 
   "A passing test should not produce any stubbing log" in new Fixture {
-    //    server1.stubFor(get(urlEqualTo("/path")).willReturn(aResponse().withStatus(200)))
     withFixture(passingTest)
     log shouldBe Nil
     stopStubbing()
   }
 
   "A failing test should print the name of the test" in new Fixture {
-    //    server1.stubFor(get(urlEqualTo("/path")).willReturn(aResponse().withStatus(200)))
     withFixture(failingTest)
     log.head shouldBe s"Wiremock expected and actual requests for failing test '${failingTest.name}'"
     stopStubbing()
@@ -86,6 +84,27 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
     server1Log should contain(s"POST: Path == $postPath")
     server1Log should contain(s"PUT: URL ~= $putUrlMatch")
     server1Log should contain(s"DELETE: Path ~= $deletePathMatch")
+
+    stopStubbing()
+  }
+
+  "A failing test using a wiremock server with header stubs should print the expected headers" in new Fixture {
+    val equalHeaderName = "a"
+    val equalHeaderValue = "1"
+    val containingHeaderName = "b"
+    val containingHeaderValue = "2"
+    val url = "/url"
+    mockServer1.server.stubFor(get(urlEqualTo(url))
+        .withHeader(equalHeaderName, equalTo(equalHeaderValue))
+        .withHeader(containingHeaderName, containing(containingHeaderValue))
+        .willReturn(aResponse().withStatus(200))
+    )
+    withFixture(failingTest)
+    val headerLog = log.dropWhile {!_.contains(url)}.tail.take(3)
+
+    headerLog.head shouldBe "With headers:"
+    headerLog.tail should contain(s"\t'$equalHeaderName' equals '$equalHeaderValue'")
+    headerLog.tail should contain(s"\t'$containingHeaderName' contains '$containingHeaderValue'")
 
     stopStubbing()
   }
