@@ -108,4 +108,41 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
 
     stopStubbing()
   }
+
+  "A failing test using a wiremock server with body stubs should print the expected body matchers" in new Fixture {
+    val url = "/url"
+    val equal = "a"
+    val contains = "b"
+    val matches = "c"
+    val eqJson = "d"
+    val eqXml = "e"
+    val doesNotMatch = "f"
+    val matchJP = "g"
+    val matchXP = "h"
+    mockServer1.server.stubFor(get(urlEqualTo(url))
+        .willReturn(aResponse().withStatus(200))
+        .withRequestBody(equalTo(equal))
+        .withRequestBody(containing(contains))
+        .withRequestBody(matching(matches))
+        .withRequestBody(equalToJson(eqJson))
+        .withRequestBody(equalToXml(eqXml))
+        .withRequestBody(notMatching(doesNotMatch))
+        .withRequestBody(matchingJsonPath(matchJP))
+        .withRequestBody(matchingXPath(matchXP))
+    )
+    withFixture(failingTest)
+    val headerLog = log.dropWhile {!_.contains("With headers:")}.tail.take(9)
+
+    headerLog.head shouldBe "With body:"
+    headerLog.tail should contain(s"\tequals '$equal'")
+    headerLog.tail should contain(s"\tcontains '$contains'")
+    headerLog.tail should contain(s"\tmatches '$matches'")
+    headerLog.tail should contain(s"\tequals json '$eqJson'")
+    headerLog.tail should contain(s"\tequals xml '$eqXml'")
+    headerLog.tail should contain(s"\tdoes not match '$doesNotMatch'")
+    headerLog.tail should contain(s"\tmatches json path '$matchJP'")
+    headerLog.tail should contain(s"\tmatches xpath '$matchXP'")
+
+    stopStubbing()
+  }
 }

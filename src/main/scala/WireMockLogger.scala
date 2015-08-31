@@ -35,6 +35,13 @@ trait WireMockLogger {
             } {
               wiremockFailureLog.println(s"\t'${header._1}' ${ValueMatcher(header._2)}")
             }
+            wiremockFailureLog.println("With body:")
+            for {
+              bodyPatterns <- Option(pattern.getBodyPatterns)
+              bodyPattern <- bodyPatterns
+            } {
+              wiremockFailureLog.println(s"\t${ValueMatcher(bodyPattern)}")
+            }
         }
     }
   }
@@ -72,9 +79,20 @@ class ValueMatcher(policy: String, value: String) {
 }
 
 object ValueMatcher {
-  def apply(vp: ValuePattern): ValueMatcher = (vp.getEqualTo, vp.getContains) match {
-    case (eq, null) => new ValueMatcher("equals", eq)
-    case (null, cont) => new ValueMatcher("contains", cont)
-    case _ => throw new UnsupportedOperationException(s"Unsupported value pattern: $vp")
+  def apply(vp: ValuePattern): ValueMatcher = {
+    val allMatchers = List(
+      ("equals", vp.getEqualTo),
+      ("contains", vp.getContains),
+      ("does not match", vp.getDoesNotMatch),
+      ("equals json", vp.getEqualToJson),
+      ("equals xml", vp.getEqualToXml),
+      ("matches", vp.getMatches),
+      ("matches json path", vp.getMatchesJsonPath),
+      ("matches xpath", vp.getMatchesXPath)
+    )
+    allMatchers.find(_._2 != null) match {
+      case Some((policy, value)) => new ValueMatcher(policy, value)
+      case _ => throw new UnsupportedOperationException(s"Unsupported value pattern: $vp")
+    }
   }
 }
