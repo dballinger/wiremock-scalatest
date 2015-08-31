@@ -11,41 +11,6 @@ trait WireMockLogger {
 
   def mockServers: Iterable[MockServer]
 
-  def printExpectedAndActualRequests(test: NoArgTest) = {
-    wiremockFailureLog.println(s"Wiremock expected and actual requests for failing test '${test.name}'")
-    mockServers foreach {
-      ms =>
-        val server = ms.server
-        val mappings = server.listAllStubMappings().getMappings
-        if (mappings.isEmpty)
-          wiremockFailureLog.println(s"Wiremock server '${ms.name}' did not expect any requests. Did you forget to configure any stubs?")
-        else
-          wiremockFailureLog.println(s"Wiremock server '${ms.name}' stub mappings:")
-        mappings foreach {
-          mapping =>
-            val pattern = mapping.getRequest
-            pattern match {
-              case UrlMatcher(url) => wiremockFailureLog.println(s"${pattern.getMethod.value()}: $url")
-              case _ => throw new UnsupportedOperationException
-            }
-            wiremockFailureLog.println("With headers:")
-            for {
-              headers <- Option(pattern.getHeaders)
-              header <- headers
-            } {
-              wiremockFailureLog.println(s"\t'${header._1}' ${ValueMatcher(header._2)}")
-            }
-            wiremockFailureLog.println("With body:")
-            for {
-              bodyPatterns <- Option(pattern.getBodyPatterns)
-              bodyPattern <- bodyPatterns
-            } {
-              wiremockFailureLog.println(s"\t${ValueMatcher(bodyPattern)}")
-            }
-        }
-    }
-  }
-
   override protected def withFixture(test: NoArgTest) = {
     test() match {
       case outcome: Failed =>
@@ -53,6 +18,68 @@ trait WireMockLogger {
         outcome
       case outcome =>
         outcome
+    }
+  }
+
+  private def printExpectedAndActualRequests(test: NoArgTest) = {
+    wiremockFailureLog.println(s"Wiremock expected and actual requests for failing test '${test.name}'")
+    mockServers foreach printServerStubsAndRequests
+  }
+
+  private def printServerStubsAndRequests(ms: MockServer): Unit = {
+    val server = ms.server
+    printStubs(ms, server)
+    wiremockFailureLog.println()
+    printRequests(server)
+  }
+
+  private def printRequests(server: WireMockServer): Unit = {
+    wiremockFailureLog.println("ACTUAL REQUESTS")
+    server.findRequestsMatching(RequestPattern.everything()).getRequests.foreach {
+      request =>
+        val method = request.getMethod.value()
+        val url = request.getUrl
+        wiremockFailureLog.println(s"$method: $url")
+        wiremockFailureLog.println("Headers:")
+        request.getHeaders.all().foreach {
+          header =>
+            wiremockFailureLog.println(s"\t${header.key()}: ${header.values().mkString(",")}")
+        }
+        wiremockFailureLog.println("Body:")
+        wiremockFailureLog.println(request.getBodyAsString)
+    }
+  }
+
+  private def printStubs(ms: MockServer, server: WireMockServer): Unit = {
+    val mappings = server.listAllStubMappings().getMappings
+    val serverLine = s"WIREMOCK SERVER '${ms.name}'"
+    wiremockFailureLog.println(serverLine)
+    wiremockFailureLog.println(List.fill(serverLine.length)("=").mkString)
+    if (mappings.isEmpty)
+      wiremockFailureLog.println(s"DID NOT EXPECT ANY REQUESTS. DID YOU FORGET TO CONFIGURE ANY STUBS?")
+    else
+      wiremockFailureLog.println(s"STUB MAPPINGS:")
+    mappings foreach {
+      mapping =>
+        val pattern = mapping.getRequest
+        pattern match {
+          case UrlMatcher(url) => wiremockFailureLog.println(s"${pattern.getMethod.value()}: $url")
+          case _ => throw new scala.UnsupportedOperationException
+        }
+        wiremockFailureLog.println("With headers:")
+        for {
+          headers <- Option(pattern.getHeaders)
+          header <- headers
+        } {
+          wiremockFailureLog.println(s"\t'${header._1}' ${ValueMatcher(header._2)}")
+        }
+        wiremockFailureLog.println("With body:")
+        for {
+          bodyPatterns <- Option(pattern.getBodyPatterns)
+          bodyPattern <- bodyPatterns
+        } {
+          wiremockFailureLog.println(s"\t${ValueMatcher(bodyPattern)}")
+        }
     }
   }
 

@@ -7,6 +7,7 @@ import org.scalatest._
 
 import scala.collection.immutable.IndexedSeq
 import scala.io.Source
+import scalaj.http.Http
 
 class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach {
 
@@ -60,8 +61,10 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
 
   "A failing test using an unstubbed wiremock server should explain that there were no expected stubbings" in new Fixture {
     withFixture(failingTest)
-    log should contain(s"Wiremock server '${mockServer1.name}' did not expect any requests. Did you forget to configure any stubs?")
-    log should contain(s"Wiremock server '${mockServer2.name}' did not expect any requests. Did you forget to configure any stubs?")
+    log should contain(s"WIREMOCK SERVER '${mockServer1.name}'")
+    log should contain(s"DID NOT EXPECT ANY REQUESTS. DID YOU FORGET TO CONFIGURE ANY STUBS?")
+    log should contain(s"WIREMOCK SERVER '${mockServer2.name}'")
+    log should contain(s"DID NOT EXPECT ANY REQUESTS. DID YOU FORGET TO CONFIGURE ANY STUBS?")
     stopStubbing()
   }
 
@@ -79,7 +82,8 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
 
     val server1Log = log.takeWhile {!_.contains(mockServer2.name)}
 
-    server1Log should contain(s"Wiremock server '${mockServer1.name}' stub mappings:")
+    server1Log should contain(s"WIREMOCK SERVER '${mockServer1.name}'")
+    server1Log should contain(s"STUB MAPPINGS:")
     server1Log should contain(s"GET: URL == $getUrl")
     server1Log should contain(s"POST: Path == $postPath")
     server1Log should contain(s"PUT: URL ~= $putUrlMatch")
@@ -120,7 +124,6 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
     val matchJP = "g"
     val matchXP = "h"
     mockServer1.server.stubFor(get(urlEqualTo(url))
-        .willReturn(aResponse().withStatus(200))
         .withRequestBody(equalTo(equal))
         .withRequestBody(containing(contains))
         .withRequestBody(matching(matches))
@@ -129,6 +132,7 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
         .withRequestBody(notMatching(doesNotMatch))
         .withRequestBody(matchingJsonPath(matchJP))
         .withRequestBody(matchingXPath(matchXP))
+        .willReturn(aResponse().withStatus(200))
     )
     withFixture(failingTest)
     val headerLog = log.dropWhile {!_.contains("With headers:")}.tail.take(9)
@@ -142,6 +146,37 @@ class WireMockLoggerTest extends WordSpec with Matchers with BeforeAndAfterEach 
     headerLog.tail should contain(s"\tdoes not match '$doesNotMatch'")
     headerLog.tail should contain(s"\tmatches json path '$matchJP'")
     headerLog.tail should contain(s"\tmatches xpath '$matchXP'")
+
+    stopStubbing()
+  }
+
+  "A failing test using a wiremock server should print out the requests received" in new Fixture {
+    mockServer1.server.stubFor(post(urlEqualTo("/somewhere")).willReturn(aResponse().withStatus(200)))
+    val port = mockServer1.server.port()
+    val header1Name = "h1"
+    val header1Value = "v1"
+    val header2Name = "h2"
+    val header2Value = "v2"
+    val body = "body content"
+    val s = Http(s"http://localhost:$port/somewhere-else")
+        .headers((header1Name, header1Value), (header2Name, header2Value))
+        .postData(body)
+        .asString
+
+    withFixture(failingTest)
+
+    val actualRequestsLog = log.dropWhile {_ != "ACTUAL REQUESTS"}.takeWhile(!_.contains("WIREMOCK SERVER"))
+    val headersLog = actualRequestsLog.drop(3).takeWhile{_ != "Body:"}
+    val bodyLog = actualRequestsLog.drop(3).dropWhile{_ != "Body:"}.tail.head
+
+    actualRequestsLog.take(3) shouldBe List(
+      "ACTUAL REQUESTS",
+      "POST: /somewhere-else",
+      "Headers:"
+    )
+    headersLog should contain(s"\t$header1Name: $header1Value")
+    headersLog should contain(s"\t$header2Name: $header2Value")
+    bodyLog shouldBe body
 
     stopStubbing()
   }
